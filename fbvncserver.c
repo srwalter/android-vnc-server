@@ -29,6 +29,7 @@
 #include <fcntl.h>
 #include <linux/fb.h>
 #include <linux/input.h>
+#include <linux/uinput.h>
 
 #include <assert.h>
 #include <errno.h>
@@ -39,10 +40,8 @@
 
 /*****************************************************************************/
 
-/* Android does not use /dev/fb0. */
-#define FB_DEVICE "/dev/graphics/fb0"
+#define FB_DEVICE "/dev/fb0"
 static char KBD_DEVICE[256] = "/dev/input/event3";
-static char TOUCH_DEVICE[256] = "/dev/input/event1";
 static struct fb_var_screeninfo scrinfo;
 static int fbfd = -1;
 static int kbdfd = -1;
@@ -143,25 +142,50 @@ static void cleanup_kbd()
 static void init_touch()
 {
     struct input_absinfo info;
-        if((touchfd = open(TOUCH_DEVICE, O_RDWR)) == -1)
+	struct uinput_user_dev uidev;
+	
+        if((touchfd = open("/dev/uinput", O_WRONLY)) == -1)
         {
-                printf("cannot open touch device %s\n", TOUCH_DEVICE);
+                printf("cannot open /dev/uinput\n");
                 exit(EXIT_FAILURE);
         }
-    // Get the Range of X and Y
-    if(ioctl(touchfd, EVIOCGABS(ABS_X), &info)) {
-        printf("cannot get ABS_X info, %s\n", strerror(errno));
+    if(ioctl(touchfd, UI_SET_EVBIT, EV_KEY) < 0) {
+		perror("ioctl");
         exit(EXIT_FAILURE);
     }
-    xmin = info.minimum;
-    xmax = info.maximum;
-    if(ioctl(touchfd, EVIOCGABS(ABS_Y), &info)) {
-        printf("cannot get ABS_Y, %s\n", strerror(errno));
+    if(ioctl(touchfd, UI_SET_KEYBIT, BTN_TOUCH) < 0) {
+		perror("ioctl");
         exit(EXIT_FAILURE);
     }
-    ymin = info.minimum;
-    ymax = info.maximum;
+    if(ioctl(touchfd, UI_SET_EVBIT, EV_ABS) < 0) {
+		perror("ioctl");
+        exit(EXIT_FAILURE);
+    }
+    if(ioctl(touchfd, UI_SET_ABSBIT, ABS_X) < 0) {
+		perror("ioctl");
+        exit(EXIT_FAILURE);
+    }
+    if(ioctl(touchfd, UI_SET_ABSBIT, ABS_Y) < 0) {
+		perror("ioctl");
+        exit(EXIT_FAILURE);
+    }
+    xmin = 0;
+    xmax = 1023;
+    ymin = 0;
+    ymax = 1024;
 
+	memset(&uidev, 0, sizeof(uidev));
+	snprintf(uidev.name, UINPUT_MAX_NAME_SIZE, "fbvncserver-input");
+	uidev.id.bustype = BUS_VIRTUAL;
+	uidev.absmin[ABS_X] = xmin;
+	uidev.absmax[ABS_X] = xmax;
+	uidev.absmin[ABS_Y] = ymin;
+	uidev.absmax[ABS_Y] = ymax;
+	write(touchfd, &uidev, sizeof(uidev));
+    if(ioctl(touchfd, UI_DEV_CREATE) < 0) {
+		perror("ioctl");
+        exit(EXIT_FAILURE);
+    }
 }
 
 static void cleanup_touch()
@@ -370,8 +394,8 @@ a press and release of button 5.
 	
 	//printf("Got ptrevent: %04x (x=%d, y=%d)\n", buttonMask, x, y);
 	if(buttonMask & 1) {
-		// Simulate left mouse event as touch event
 		injectTouchEvent(1, x, y);
+	} else {
 		injectTouchEvent(0, x, y);
 	} 
 }
@@ -454,7 +478,6 @@ void print_usage(char **argv)
 {
 	printf("%s [-k device] [-t device] [-h]\n"
 		"-k device: keyboard device node, default is /dev/input/event3\n"
-		"-t device: touch device node, default is /dev/input/event1\n"
 		"-h : print this help\n");
 }
 
@@ -477,10 +500,6 @@ int main(int argc, char **argv)
 						i++;
 						strcpy(KBD_DEVICE, argv[i]);
 						break;
-					case 't':
-						i++;
-						strcpy(TOUCH_DEVICE, argv[i]);
-						break;
 				}
 			}
 			i++;
@@ -491,7 +510,7 @@ int main(int argc, char **argv)
 	init_fb();
 	printf("Initializing keyboard device %s ...\n", KBD_DEVICE);
 	init_kbd();
-	printf("Initializing touch device %s ...\n", TOUCH_DEVICE);
+	printf("Initializing touch device ...\n");
 	init_touch();
 
 	printf("Initializing VNC server:\n");
