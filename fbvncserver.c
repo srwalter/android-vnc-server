@@ -169,6 +169,10 @@ static void init_touch()
 		perror("ioctl");
         exit(EXIT_FAILURE);
     }
+    if(ioctl(touchfd, UI_SET_PROPBIT, INPUT_PROP_DIRECT) < 0) {
+		perror("ioctl");
+        exit(EXIT_FAILURE);
+    }
     xmin = 0;
     xmax = 1023;
     ymin = 0;
