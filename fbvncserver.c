@@ -41,7 +41,7 @@
 /*****************************************************************************/
 
 #define FB_DEVICE "/dev/fb0"
-static char KBD_DEVICE[256] = "/dev/input/event3";
+static char KBD_DEVICE[256] = "";
 static struct fb_var_screeninfo scrinfo;
 static int fbfd = -1;
 static int kbdfd = -1;
@@ -127,7 +127,6 @@ static void init_kbd()
 	if((kbdfd = open(KBD_DEVICE, O_RDWR)) == -1)
 	{
 		printf("cannot open kbd device %s\n", KBD_DEVICE);
-		exit(EXIT_FAILURE);
 	}
 }
 
@@ -246,6 +245,10 @@ static void init_fb_server(int argc, char **argv)
 void injectKeyEvent(uint16_t code, uint16_t value)
 {
     struct input_event ev;
+
+    if (kbdfd < 0)
+	    return;
+
     memset(&ev, 0, sizeof(ev));
     gettimeofday(&ev.time,0);
     ev.type = EV_KEY;
@@ -508,8 +511,10 @@ int main(int argc, char **argv)
 
 	printf("Initializing framebuffer device " FB_DEVICE "...\n");
 	init_fb();
-	printf("Initializing keyboard device %s ...\n", KBD_DEVICE);
-	init_kbd();
+	if (KBD_DEVICE[0]) {
+		printf("Initializing keyboard device %s ...\n", KBD_DEVICE);
+		init_kbd();
+	}
 	printf("Initializing touch device ...\n");
 	init_touch();
 
