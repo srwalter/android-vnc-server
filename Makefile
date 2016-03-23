@@ -7,3 +7,6 @@ install:
 
 fbvncserver: fbvncserver.c
 	$(CC) -o $@ fbvncserver.c -lvncserver
+
+clean:
+	rm fbvncserver
